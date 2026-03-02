@@ -112,6 +112,25 @@ if display is not None:
 - You can use return_smooth = True if you hear metallic sounds.
 - Lower t_shift for less possible pronunciation errors but worse quality and vice versa.
 
+## Inconsistencies and improvement notes
+
+- **Inconsistency:** Inference defaults to float32, while Ampere GPUs can accelerate float32 matmul/conv via TF32 with negligible quality impact for TTS inference.
+  - **Improvement added:** TF32 is now enabled automatically on Ampere (`sm_80+`) in GPU model loading.
+  ```python
+  if major >= 8:
+      torch.backends.cuda.matmul.allow_tf32 = True
+      torch.backends.cudnn.allow_tf32 = True
+      torch.set_float32_matmul_precision("high")
+  ```
+- **Inconsistency:** Speed guidance is generic and does not call out Ampere-safe optimization path separately from more aggressive fp16 paths.
+  - **Suggested usage snippet (quality-preserving on Ampere):**
+  ```python
+  from zipvoice.luxvoice import LuxTTS
+
+  lux_tts = LuxTTS("YatharthS/LuxTTS", device="cuda")
+  # On Ampere, TF32 is enabled automatically in model loading.
+  ```
+
   
 ## Info
 
