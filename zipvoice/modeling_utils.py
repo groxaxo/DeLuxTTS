@@ -43,6 +43,20 @@ class LuxTTSConfig:
     lang: str = "en-us"
 
 
+def _enable_ampere_tf32(device: str = "cuda"):
+    if not torch.cuda.is_available():
+        return
+    device_index = torch.device(device).index
+    if device_index is None:
+        device_index = torch.cuda.current_device()
+    major, _ = torch.cuda.get_device_capability(device_index)
+    if major >= 8:
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        if hasattr(torch, "set_float32_matmul_precision"):
+            torch.set_float32_matmul_precision("high")
+
+
 @torch.inference_mode
 def process_audio(audio, transcriber, tokenizer, feature_extractor, device, target_rms=0.1, duration=4, feat_scale=0.1):
     prompt_wav, sr = librosa.load(audio, sr=24000, duration=duration)
@@ -94,6 +108,7 @@ def load_models_gpu(model_path=None, device="cuda"):
     params = LuxTTSConfig()
     if model_path is None:
         model_path = snapshot_download("YatharthS/LuxTTS")
+    _enable_ampere_tf32(device=device)
 
     token_file = f"{model_path}/tokens.txt"
     model_ckpt = f"{model_path}/model.pt"
