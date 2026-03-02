@@ -46,10 +46,19 @@ class LuxTTSConfig:
 def _enable_ampere_tf32(device: str = "cuda"):
     if not torch.cuda.is_available():
         return
-    device_index = torch.device(device).index
+    try:
+        parsed_device = torch.device(device)
+    except (TypeError, RuntimeError, ValueError):
+        return
+    if parsed_device.type != "cuda":
+        return
+    device_index = parsed_device.index
     if device_index is None:
         device_index = torch.cuda.current_device()
-    major, _ = torch.cuda.get_device_capability(device_index)
+    try:
+        major, _ = torch.cuda.get_device_capability(device_index)
+    except RuntimeError:
+        return
     if major >= 8:
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True

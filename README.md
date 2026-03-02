@@ -114,7 +114,7 @@ if display is not None:
 
 ## Inconsistencies and improvement notes
 
-- **Inconsistency:** Inference is described as float32-only, while Ampere GPUs can accelerate float32 matmul/conv via TF32 with negligible quality impact for TTS inference.
+- **Inconsistency:** Inference defaults to float32, while Ampere GPUs can accelerate float32 matmul/conv via TF32 with negligible quality impact for TTS inference.
   - **Improvement added:** TF32 is now enabled automatically on Ampere (`sm_80+`) in GPU model loading.
   ```python
   if major >= 8:
