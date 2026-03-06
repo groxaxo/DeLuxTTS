@@ -5,9 +5,25 @@ from zipvoice.onnx_modeling import generate_cpu
 class LuxTTS:
     """
     LuxTTS class for encoding prompt and generating speech on cpu/cuda/mps.
+
+    For accelerated CPU inference on Intel hardware (e.g. Core i5-1240P), pass
+    ``device='openvino'``.  An optional ``openvino_device`` argument selects
+    the specific Intel execution target:
+
+    * ``"CPU"``  – Intel CPU with OpenVINO kernel optimisations (default).
+    * ``"GPU"``  – Intel integrated/discrete GPU (e.g. Iris Xe on i5-1240P).
+    * ``"NPU"``  – Intel Neural Processing Unit when present.
+
+    This requires the ``onnxruntime-openvino`` package::
+
+        pip install onnxruntime-openvino
+
+    Example::
+
+        lux_tts = LuxTTS('YatharthS/LuxTTS', device='openvino', openvino_device='GPU')
     """
 
-    def __init__(self, model_path='YatharthS/LuxTTS', device='cuda', threads=4):
+    def __init__(self, model_path='YatharthS/LuxTTS', device='cuda', threads=4, openvino_device='CPU'):
         if model_path == 'YatharthS/LuxTTS':
             model_path = None
 
@@ -20,7 +36,12 @@ class LuxTTS:
                 print("CUDA not available, switching to CPU")
                 device = 'cpu'
 
-        if device == 'cpu':
+        if device == 'openvino':
+            model, feature_extractor, vocos, tokenizer, transcriber = load_models_cpu(
+                model_path, threads, use_openvino=True, openvino_device=openvino_device
+            )
+            print(f"Loading model with OpenVINO ({openvino_device})")
+        elif device == 'cpu':
             model, feature_extractor, vocos, tokenizer, transcriber = load_models_cpu(model_path, threads)
             print("Loading model on CPU")
         else:
@@ -39,7 +60,9 @@ class LuxTTS:
 
     def encode_prompt(self, prompt_audio, duration=5, rms=0.001):
         """encodes audio prompt according to duration and rms(volume control)"""
-        prompt_tokens, prompt_features_lens, prompt_features, prompt_rms = process_audio(prompt_audio, self.transcriber, self.tokenizer, self.feature_extractor, self.device, target_rms=rms, duration=duration)
+        # OpenVINO uses ONNX Runtime for inference; tensors stay on CPU.
+        torch_device = 'cpu' if self.device == 'openvino' else self.device
+        prompt_tokens, prompt_features_lens, prompt_features, prompt_rms = process_audio(prompt_audio, self.transcriber, self.tokenizer, self.feature_extractor, torch_device, target_rms=rms, duration=duration)
         encode_dict = {"prompt_tokens": prompt_tokens, 'prompt_features_lens': prompt_features_lens, 'prompt_features': prompt_features, 'prompt_rms': prompt_rms}
 
         return encode_dict
@@ -54,7 +77,7 @@ class LuxTTS:
         else:
             self.vocos.return_48k = True
 
-        if self.device == 'cpu':
+        if self.device in ('cpu', 'openvino'):
             final_wav = generate_cpu(prompt_tokens, prompt_features_lens, prompt_features, prompt_rms, text, self.model, self.vocos, self.tokenizer, num_step=num_steps, guidance_scale=guidance_scale, t_shift=t_shift, speed=speed)
         else:
             final_wav = generate(prompt_tokens, prompt_features_lens, prompt_features, prompt_rms, text, self.model, self.vocos, self.tokenizer, num_step=num_steps, guidance_scale=guidance_scale, t_shift=t_shift, speed=speed)
