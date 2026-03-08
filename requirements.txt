@@ -23,3 +23,9 @@ jieba
 piper_phonemize
 pypinyin
 setuptools<81
+
+# Optional: Intel OpenVINO acceleration (CPU / Iris Xe GPU / NPU on i5-1240P and similar)
+# Install instead of onnxruntime for OpenVINO-accelerated ONNX Runtime inference:
+# pip install onnxruntime-openvino
+# Then use: LuxTTS(..., device='openvino', openvino_device='GPU')
+# or CLI:   python -m zipvoice.bin.infer_zipvoice_onnx --openvino True --openvino-device GPU ...

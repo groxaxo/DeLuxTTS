@@ -148,7 +148,22 @@ def load_models_gpu(model_path=None, device="cuda"):
     params.sampling_rate = model_config["feature"]["sampling_rate"]
     return model, feature_extractor, vocos, tokenizer, transcriber
 
-def load_models_cpu(model_path = None, num_thread=2):
+def load_models_cpu(model_path=None, num_thread=2, use_openvino=False, openvino_device="CPU"):
+    """Load LuxTTS models for CPU inference, optionally accelerated with OpenVINO.
+
+    Args:
+        model_path: Local path to the model directory.  Downloads from
+            HuggingFace when *None*.
+        num_thread: Number of CPU threads passed to ONNX Runtime (used when
+            OpenVINO is not active).
+        use_openvino: Enable the OpenVINO Execution Provider for accelerated
+            inference on Intel hardware.  Requires the
+            ``onnxruntime-openvino`` package to be installed.
+        openvino_device: OpenVINO device target.  ``"CPU"`` uses Intel CPU
+            optimisations, ``"GPU"`` targets Intel integrated or discrete GPU
+            (e.g. Iris Xe on the i5-1240P), and ``"NPU"`` uses the Intel Neural
+            Processing Unit when available.
+    """
     params = LuxTTSConfig()
     params.seed = 42
 
@@ -157,7 +172,7 @@ def load_models_cpu(model_path = None, num_thread=2):
     token_file = f"{model_path}/tokens.txt"
     text_encoder_path = f"{model_path}/text_encoder.onnx"
     fm_decoder_path = f"{model_path}/fm_decoder.onnx"
-    model_config  = f"{model_path}/config.json"
+    model_config = f"{model_path}/config.json"
 
     transcriber = pipeline("automatic-speech-recognition", model="openai/whisper-tiny", device='cpu')
 
@@ -167,7 +182,13 @@ def load_models_cpu(model_path = None, num_thread=2):
     with open(model_config, "r") as f:
         model_config = json.load(f)
 
-    model = OnnxModel(text_encoder_path, fm_decoder_path, num_thread=num_thread)
+    model = OnnxModel(
+        text_encoder_path,
+        fm_decoder_path,
+        num_thread=num_thread,
+        use_openvino=use_openvino,
+        openvino_device=openvino_device,
+    )
 
     vocos = Vocos.from_hparams(f'{model_path}/vocoder/config.yaml').eval()
     parametrize.remove_parametrizations(vocos.upsampler.upsample_layers[0], "weight")

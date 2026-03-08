@@ -52,6 +52,29 @@ Each line of `test.tsv` is in the format of
 
 Set `--onnx-int8 True` to use int8 quantizated ONNX model.
 Quantizated model has faster but lower quality.
+
+(3) OpenVINO-accelerated inference on Intel hardware (e.g. Core i5-1240P):
+
+Requires onnxruntime-openvino (install instead of onnxruntime):
+    pip install onnxruntime-openvino
+
+Use Intel CPU with OpenVINO optimisations:
+python3 -m zipvoice.bin.infer_zipvoice_onnx \
+    --openvino True \
+    --openvino-device CPU \
+    --prompt-wav prompt.wav \
+    --prompt-text "I am a prompt." \
+    --text "I am a sentence." \
+    --res-wav-path result.wav
+
+Use Intel Iris Xe integrated GPU (available on i5-1240P and similar):
+python3 -m zipvoice.bin.infer_zipvoice_onnx \
+    --openvino True \
+    --openvino-device GPU \
+    --prompt-wav prompt.wav \
+    --prompt-text "I am a prompt." \
+    --text "I am a sentence." \
+    --res-wav-path result.wav
 """
 
 import argparse
@@ -255,6 +278,26 @@ def get_parser():
     )
 
     parser.add_argument(
+        "--openvino",
+        type=str2bool,
+        default=False,
+        help="Whether to use the OpenVINO Execution Provider for accelerated "
+        "inference on Intel hardware (requires onnxruntime-openvino).",
+    )
+
+    parser.add_argument(
+        "--openvino-device",
+        type=str,
+        default="CPU",
+        choices=["CPU", "GPU", "NPU"],
+        help="OpenVINO target device. "
+        "'CPU' uses Intel CPU optimisations, "
+        "'GPU' targets Intel integrated/discrete GPU (e.g. Iris Xe on i5-1240P), "
+        "'NPU' uses the Intel Neural Processing Unit when available. "
+        "Only used when --openvino is True.",
+    )
+
+    parser.add_argument(
         "--raw-evaluation",
         type=str2bool,
         default=False,
@@ -278,28 +321,64 @@ class OnnxModel:
         text_encoder_path: str,
         fm_decoder_path: str,
         num_thread: int = 1,
+        use_openvino: bool = False,
+        openvino_device: str = "CPU",
     ):
+        """
+        Args:
+            text_encoder_path: Path to the text encoder ONNX model.
+            fm_decoder_path: Path to the flow-matching decoder ONNX model.
+            num_thread: Number of CPU threads for ONNX Runtime (used when
+                OpenVINO is not active).
+            use_openvino: If True, use the OpenVINO Execution Provider for
+                accelerated inference on Intel hardware. Requires the
+                ``onnxruntime-openvino`` package.
+            openvino_device: OpenVINO target device. ``"CPU"`` uses Intel CPU
+                optimisations, ``"GPU"`` targets Intel integrated/discrete GPU
+                (e.g. Iris Xe on i5-1240P), and ``"NPU"`` uses the Intel Neural
+                Processing Unit when available.
+        """
         session_opts = ort.SessionOptions()
         session_opts.inter_op_num_threads = num_thread
         session_opts.intra_op_num_threads = num_thread
 
         self.session_opts = session_opts
+        self.use_openvino = use_openvino
+        self.openvino_device = openvino_device
+
+        if use_openvino:
+            available = [ep for ep in ort.get_available_providers()]
+            if "OpenVINOExecutionProvider" not in available:
+                logging.warning(
+                    "OpenVINOExecutionProvider is not available "
+                    "(install onnxruntime-openvino). Falling back to CPUExecutionProvider."
+                )
+                self.use_openvino = False
 
         self.init_text_encoder(text_encoder_path)
         self.init_fm_decoder(fm_decoder_path)
+
+    def _get_providers(self):
+        if self.use_openvino:
+            ov_options = {
+                "device_type": self.openvino_device,
+                "enable_opencl_throttling": "True",
+            }
+            return [("OpenVINOExecutionProvider", ov_options), "CPUExecutionProvider"]
+        return ["CPUExecutionProvider"]
 
     def init_text_encoder(self, model_path: str):
         self.text_encoder = ort.InferenceSession(
             model_path,
             sess_options=self.session_opts,
-            providers=["CPUExecutionProvider"],
+            providers=self._get_providers(),
         )
 
     def init_fm_decoder(self, model_path: str):
         self.fm_decoder = ort.InferenceSession(
             model_path,
             sess_options=self.session_opts,
-            providers=["CPUExecutionProvider"],
+            providers=self._get_providers(),
         )
         meta = self.fm_decoder.get_modelmeta().custom_metadata_map
         self.feat_dim = int(meta["feat_dim"])
@@ -858,7 +937,13 @@ def main():
     with open(model_config, "r") as f:
         model_config = json.load(f)
 
-    model = OnnxModel(text_encoder_path, fm_decoder_path, num_thread=args.num_thread)
+    model = OnnxModel(
+        text_encoder_path,
+        fm_decoder_path,
+        num_thread=args.num_thread,
+        use_openvino=args.openvino,
+        openvino_device=args.openvino_device,
+    )
 
     vocoder = get_vocoder(params.vocoder_path)
     vocoder.eval()

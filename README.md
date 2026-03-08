@@ -49,6 +49,10 @@ lux_tts = LuxTTS('YatharthS/LuxTTS', device='cuda')
 
 # load model on MPS for macs
 # lux_tts = LuxTTS('YatharthS/LuxTTS', device='mps')
+
+# load model with OpenVINO (Intel hardware: CPU / Iris Xe GPU / NPU)
+# pip install onnxruntime-openvino   # install once, replaces onnxruntime
+# lux_tts = LuxTTS('YatharthS/LuxTTS', device='openvino', openvino_device='GPU')
 ```
 
 #### Simple inference
@@ -147,6 +151,7 @@ A: Yes, currently it uses float32. Float16 should be significantly faster(almost
 - [x] Release model and code
 - [x] Huggingface spaces demo
 - [x] Release MPS support (thanks to @builtbybasit)
+- [x] OpenVINO support for Intel CPU / Iris Xe GPU / NPU (i5-1240P and similar)
 - [ ] Release LuxTTS v1.5
 - [ ] Release code for float16 inference
 
